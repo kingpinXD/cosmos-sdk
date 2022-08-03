@@ -21,7 +21,8 @@ import (
 func DoUpgrade(cfg *Config, info *UpgradeInfo) error {
 	// Simplest case is to switch the link
 	err := EnsureBinary(cfg.UpgradeBin(info.Name))
-	if err == nil {
+	err2 := EnsureBinary(cfg.UpgradeBinClient(info.Name))
+	if err == nil && err2 == nil {
 		// we have the binary - do it
 		return cfg.SetCurrentUpgrade(info.Name)
 	}
@@ -39,10 +40,16 @@ func DoUpgrade(cfg *Config, info *UpgradeInfo) error {
 	if err := DownloadBinary(cfg, info); err != nil {
 		return fmt.Errorf("cannot download binary: %w", err)
 	}
+	if err := DownloadBinaryClient(cfg, info); err != nil {
+		return fmt.Errorf("cannot download client binary: %w", err)
+	}
 
 	// and then set the binary again
 	if err := EnsureBinary(cfg.UpgradeBin(info.Name)); err != nil {
 		return fmt.Errorf("downloaded binary doesn't check out: %w", err)
+	}
+	if err := EnsureBinary(cfg.UpgradeBinClient(info.Name)); err != nil {
+		return fmt.Errorf("downloaded client binary doesn't check out: %w", err)
 	}
 
 	return cfg.SetCurrentUpgrade(info.Name)
@@ -54,11 +61,9 @@ func DownloadBinary(cfg *Config, info *UpgradeInfo) error {
 	if err != nil {
 		return err
 	}
-
 	// download into the bin dir (works for one file)
 	binPath := cfg.UpgradeBin(info.Name)
 	err = getter.GetFile(binPath, url)
-
 	// if this fails, let's see if it is a zipped directory
 	if err != nil {
 		dirPath := cfg.UpgradeDir(info.Name)
@@ -75,7 +80,6 @@ func DownloadBinary(cfg *Config, info *UpgradeInfo) error {
 			}
 		}
 	}
-
 	// if it is successful, let's ensure the binary is executable
 	return MarkExecutable(binPath)
 }
@@ -136,10 +140,8 @@ func GetDownloadURL(info *UpgradeInfo) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("cannot find binary for os/arch: neither %s, nor any", OSArch())
 		}
-
 		return url, nil
 	}
-
 	return "", errors.New("upgrade info doesn't contain binary map")
 }
 
@@ -153,6 +155,9 @@ func (cfg *Config) SetCurrentUpgrade(upgradeName string) error {
 	bin := cfg.UpgradeBin(upgradeName)
 
 	if err := EnsureBinary(bin); err != nil {
+		return err
+	}
+	if err := EnsureBinary(cfg.UpgradeBinClient(upgradeName)); err != nil {
 		return err
 	}
 

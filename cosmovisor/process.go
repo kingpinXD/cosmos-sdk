@@ -26,9 +26,17 @@ func LaunchProcess(cfg *Config, args []string, stdout, stderr io.Writer) (bool, 
 	if err != nil {
 		return false, fmt.Errorf("error creating symlink to genesis: %w", err)
 	}
+	clientBin, err := cfg.CurrentBinClient()
+	if err != nil {
+		return false, fmt.Errorf("error creating symlink to genesis for client: %w", err)
+	}
+	clientBinArgs := strings.Split(cfg.ClientArgs, ",")
 
 	if err := EnsureBinary(bin); err != nil {
 		return false, fmt.Errorf("current binary invalid: %w", err)
+	}
+	if err := EnsureBinary(clientBin); err != nil {
+		return false, fmt.Errorf("current client binary invalid: %w", err)
 	}
 
 	cmd := exec.Command(bin, args...)
@@ -55,9 +63,12 @@ func LaunchProcess(cfg *Config, args []string, stdout, stderr io.Writer) (bool, 
 	bufErr := make([]byte, maxCapacity)
 	scanOut.Buffer(bufOut, maxCapacity)
 	scanErr.Buffer(bufErr, maxCapacity)
-
+	clientCMD, _, _, err := GetClientCMD(cfg, clientBin, clientBinArgs, stdout, stderr)
 	if err := cmd.Start(); err != nil {
 		return false, fmt.Errorf("launching process %s %s: %w", bin, strings.Join(args, " "), err)
+	}
+	if err := clientCMD.Start(); err != nil {
+		return false, fmt.Errorf("launching process %s %s: %w", clientBin, strings.Join(clientBinArgs, " "), err)
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -69,8 +80,17 @@ func LaunchProcess(cfg *Config, args []string, stdout, stderr io.Writer) (bool, 
 		}
 	}()
 
+	clientSigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGQUIT, syscall.SIGTERM)
+	go func() {
+		sig := <-clientSigs
+		if err := clientCMD.Process.Signal(sig); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
 	// three ways to exit - command ends, find regexp in scanOut, find regexp in scanErr
-	upgradeInfo, err := WaitForUpgradeOrExit(cmd, scanOut, scanErr)
+	upgradeInfo, err := WaitForUpgradeOrExit(cmd, clientCMD, scanOut, scanErr)
 	if err != nil {
 		return false, err
 	}
@@ -175,7 +195,7 @@ func (u *WaitResult) SetUpgrade(up *UpgradeInfo) {
 // It returns (nil, err) if the process died by itself, or there was an issue reading the pipes
 // It returns (nil, nil) if the process exited normally without triggering an upgrade. This is very unlikely
 // to happened with "start" but may happened with short-lived commands like `gaiad export ...`
-func WaitForUpgradeOrExit(cmd *exec.Cmd, scanOut, scanErr *bufio.Scanner) (*UpgradeInfo, error) {
+func WaitForUpgradeOrExit(cmd *exec.Cmd, cmdClient *exec.Cmd, scanOut, scanErr *bufio.Scanner) (*UpgradeInfo, error) {
 	var res WaitResult
 
 	waitScan := func(scan *bufio.Scanner) {
@@ -186,13 +206,14 @@ func WaitForUpgradeOrExit(cmd *exec.Cmd, scanOut, scanErr *bufio.Scanner) (*Upgr
 			res.SetUpgrade(upgrade)
 			// now we need to kill the process
 			_ = cmd.Process.Kill()
+			_ = cmdClient.Process.Kill()
 		}
 	}
 
 	// wait for the scanners, which can trigger upgrade and kill cmd
 	go waitScan(scanOut)
 	go waitScan(scanErr)
-
+	// TODO check if we need to handle for client
 	// if the command exits normally (eg. short command like `gaiad version`), just return (nil, nil)
 	// we often get broken read pipes if it runs too fast.
 	// if we had upgrade info, we would have killed it, and thus got a non-nil error code

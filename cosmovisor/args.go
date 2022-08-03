@@ -21,6 +21,8 @@ const (
 type Config struct {
 	Home                  string
 	Name                  string
+	ClientName            string
+	ClientArgs            string // Add client args as comma separated string
 	AllowDownloadBinaries bool
 	RestartAfterUpgrade   bool
 	LogBufferSize         int
