@@ -4,7 +4,7 @@
 all: cosmovisor test
 
 cosmovisor:
-	go build -mod=readonly ./cmd/cosmovisor
+	go install -mod=readonly ./cmd/cosmovisor
 
 test:
 	go test -mod=readonly -race ./...
