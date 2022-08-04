@@ -20,7 +20,7 @@ func Run(args []string) error {
 	if err != nil {
 		return err
 	}
-
+	cfg.AddClientConfig()
 	doUpgrade, err := cosmovisor.LaunchProcess(cfg, args, os.Stdout, os.Stderr)
 
 	// if RestartAfterUpgrade, we launch after a successful upgrade (only condition LaunchProcess returns nil)
