@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/go-getter"
 	"github.com/otiai10/copy"
-	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -76,31 +75,10 @@ func (cfg *Config) validateClient() error {
 	return nil
 }
 
-func GetClientCMD(cfg *Config, bin string, args []string, stdout, stderr io.Writer) (*exec.Cmd, error) {
+func GetClientCMD(bin string, args []string) (*exec.Cmd, error) {
 	cmd := exec.Command(bin, args...)
-	//outpipe, err := cmd.StdoutPipe()
-	//if err != nil {
-	//	return nil, nil, nil, err
-	//}
-	//
-	//errpipe, err := cmd.StderrPipe()
-	//if err != nil {
-	//	return nil, nil, nil, err
-	//}
-	//
-	//scanOut := bufio.NewScanner(io.TeeReader(outpipe, stdout))
-	//scanErr := bufio.NewScanner(io.TeeReader(errpipe, stderr))
-	//// set scanner's buffer size to cfg.LogBufferSize, and ensure larger than bufio.MaxScanTokenSize otherwise fallback to bufio.MaxScanTokenSize
-	//var maxCapacity int
-	//if cfg.LogBufferSize < bufio.MaxScanTokenSize {
-	//	maxCapacity = bufio.MaxScanTokenSize
-	//} else {
-	//	maxCapacity = cfg.LogBufferSize
-	//}
-	//bufOut := make([]byte, maxCapacity)
-	//bufErr := make([]byte, maxCapacity)
-	//scanOut.Buffer(bufOut, maxCapacity)
-	//scanErr.Buffer(bufErr, maxCapacity)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	return cmd, nil
 }
 

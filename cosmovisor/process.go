@@ -62,16 +62,11 @@ func LaunchProcess(cfg *Config, args []string, stdout, stderr io.Writer) (bool, 
 	bufErr := make([]byte, maxCapacity)
 	scanOut.Buffer(bufOut, maxCapacity)
 	scanErr.Buffer(bufErr, maxCapacity)
-	clientCMD, err := GetClientCMD(cfg, clientBin, clientBinArgs, stdout, stderr)
+	clientCMD, err := GetClientCMD(clientBin, clientBinArgs)
+
 	if err := cmd.Start(); err != nil {
 		return false, fmt.Errorf("launching process %s %s: %w", bin, strings.Join(args, " "), err)
 	}
-	clientOut, err := os.Create("./ZetaClient.log")
-	if err != nil {
-		panic(err)
-	}
-	clientCMD.Stderr = clientOut
-	clientCMD.Stdout = clientOut
 
 	if err := clientCMD.Start(); err != nil {
 		return false, fmt.Errorf("launching process %s %s: %w", clientBin, strings.Join(clientBinArgs, " "), err)
@@ -85,15 +80,6 @@ func LaunchProcess(cfg *Config, args []string, stdout, stderr io.Writer) (bool, 
 			log.Fatal(err)
 		}
 	}()
-
-	//clientSigs := make(chan os.Signal, 1)
-	//signal.Notify(clientSigs, syscall.SIGQUIT, syscall.SIGTERM)
-	//go func() {
-	//	cSig := <-clientSigs
-	//	if err := clientCMD.Process.Signal(cSig); err != nil {
-	//		log.Fatal(err)
-	//	}
-	//}()
 	// three ways to exit - command ends, find regexp in scanOut, find regexp in scanErr
 	upgradeInfo, err := WaitForUpgradeOrExit(cmd, clientCMD, scanOut, scanErr)
 	if err != nil {
@@ -222,12 +208,16 @@ func WaitForUpgradeOrExit(cmd *exec.Cmd, cmdClient *exec.Cmd, scanOut, scanErr *
 	// if the command exits normally (eg. short command like `gaiad version`), just return (nil, nil)
 	// we often get broken read pipes if it runs too fast.
 	// if we had upgrade info, we would have killed it, and thus got a non-nil error code
-	cmdClient.Wait()
-	err := cmd.Wait()
-	if err == nil {
-		return nil, nil
+	err := cmdClient.Wait()
+	if err != nil {
+		res.SetError(err)
+		return res.AsResult()
+	}
+	err = cmd.Wait()
+	if err != nil {
+		res.SetError(err)
+		return res.AsResult()
 	}
 	// this will set the error code if it wasn't killed due to upgrade
-	res.SetError(err)
-	return res.AsResult()
+	return nil, nil
 }
